@@ -74,7 +74,7 @@ def get_args_parser():
     parser.add_argument('--resume', default='', help='resume from checkpoint')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
-    parser.add_argument('--num_workers', default=2, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--eval_freq', default=5, type=int)
     parser.add_argument('--syn_bn', default=0, type=int)
 
@@ -157,14 +157,16 @@ def main(args):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu',weights_only=False)
+            
         model_without_ddp.load_state_dict(checkpoint['model'])
+        
         if 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
-            best_mae = checkpoint['best_mae']
-            best_epoch = checkpoint['best_epoch']
+            best_mae = checkpoint.get('best_mae',1e8)
+            best_epoch = checkpoint.get('best_epoch',0)
 
     # training
     print("Start training")
@@ -197,6 +199,7 @@ def main(args):
                 'epoch': epoch,
                 'args': args,
                 'best_mae': best_mae,
+                'best_epoch': best_epoch,
             }, checkpoint_path)
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},

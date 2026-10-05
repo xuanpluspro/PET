@@ -44,6 +44,7 @@ class BasePETCount(nn.Module):
         shape = (image_shape + stride//2 -1) // stride
 
         # generate point queries
+        device = dense_input_embed.device
         shift_x = ((torch.arange(0, shape[1]) + 0.5) * stride).long()
         shift_y = ((torch.arange(0, shape[0]) + 0.5) * stride).long()
         shift_y, shift_x = torch.meshgrid(shift_y, shift_x)
@@ -73,12 +74,28 @@ class BasePETCount(nn.Module):
         # get image shape
         input = samples.tensors
         image_shape = torch.tensor(input.shape[2:])
-        shape = (image_shape + stride//2 -1) // stride
+        
+        device = dense_input_embed.device
 
+        img_h, img_w = input.shape[-2:]
+        shape_h = (img_h + stride // 2 - 1) // stride
+        shape_w = (img_w + stride // 2 - 1) // stride
+
+        shift_x = ((torch.arange(shape_w, device=device) + 0.5) * stride).long()
+        shift_y = ((torch.arange(shape_h, device=device) + 0.5) * stride).long()
+        shift_y, shift_x = torch.meshgrid(    
+        shift_y, shift_x, indexing='ij'
+                                      )
+        points_queries = torch.vstack([    
+              shift_y.flatten(),    
+              shift_x.flatten()
+            ]).permute(1, 0)
+        h, w = shift_x.shape
+
+        
         # generate points queries
-        shift_x = ((torch.arange(0, shape[1]) + 0.5) * stride).long()
-        shift_y = ((torch.arange(0, shape[0]) + 0.5) * stride).long()
-        shift_y, shift_x = torch.meshgrid(shift_y, shift_x)
+
+        
         points_queries = torch.vstack([shift_y.flatten(), shift_x.flatten()]).permute(1,0) # 2xN --> Nx2
         h, w = shift_x.shape
 
