@@ -46,6 +46,13 @@ def get_args():
         help="Process only the first N images; 0 means all images.",
     )
 
+    parser.add_argument(
+        "--max_side", default=0, type=int,
+        help=("With --full_image, downscale proportionally so the longest "
+              "edge is at most this size; 0 disables resizing. "
+              "All saved points are mapped to the original image."),
+    )
+
     # Sliding-window settings (ignored when --full_image is enabled).
     parser.add_argument("--patch_size", default=512, type=int)
     parser.add_argument("--overlap", default=128, type=int)
@@ -423,6 +430,10 @@ def main():
         raise RuntimeError(f"No images found in: {input_dir}")
     if args.max_images < 0:
         raise ValueError("--max_images must be >= 0")
+    if args.max_side < 0:
+        raise ValueError("--max_side must be >= 0")
+    if args.max_side > 0 and not args.full_image:
+        raise ValueError("--max_side requires --full_image")
     if args.max_images:
         image_paths = image_paths[:args.max_images]
 
@@ -438,9 +449,14 @@ def main():
 
     print(f"Found {len(image_paths)} images.")
     if args.full_image:
-        print("MODE: FULL ORIGINAL IMAGE; no cropping, resizing or sliding windows.")
+        print("MODE: SINGLE-PASS WHOLE-IMAGE PET (no cropping or sliding windows).")
+        if args.max_side:
+            print(f"Proportional downscale: longest side <= {args.max_side} px (no upscaling).")
+            print("Detection coordinates will be mapped back to original image pixels.")
+        else:
+            print("Resizing: DISABLED (original pixels).")
         print("Point deduplication: DISABLED (raw PET detections, no extra radius NMS).")
-        print("WARNING: 4096x3072 may exceed 32 GB GPU memory; use --amp.")
+        print("WARNING: large input may exceed GPU memory; --amp can help.")
     else:
         print(
             f"Sliding-window: patch={args.patch_size}, "
@@ -467,12 +483,30 @@ def main():
 
         try:
             if args.full_image:
-                # Feed the ENTIRE original image to PET in one forward pass.
-                # infer_patch() already preserves the input resolution and
-                # returns global (x, y) coordinates for this full image.
-                points = infer_patch(
-                    model, image, transform, device, use_amp=args.amp
+                # Optional proportional downscale (not a crop and not a tiling step).
+                # PET sees every part of the image in ONE forward pass.
+                infer_image = image
+                infer_h, infer_w = h, w
+                if args.max_side and max(w, h) > args.max_side:
+                    scale = args.max_side / float(max(w, h))
+                    infer_w = max(1, int(round(w * scale)))
+                    infer_h = max(1, int(round(h * scale)))
+                    infer_image = cv2.resize(
+                        image, (infer_w, infer_h), interpolation=cv2.INTER_AREA
+                    )
+                print(
+                    f"  single-pass PET input: {infer_w}x{infer_h} "
+                    f"(original {w}x{h})"
                 )
+                points = infer_patch(
+                    model, infer_image, transform, device, use_amp=args.amp
+                )
+                # infer_patch returns coordinates in network input pixels.
+                # Restore ORIGINAL image coordinates for JSON and visualization.
+                x_scale, y_scale = w / infer_w, h / infer_h
+                for point in points:
+                    point["x"] = min(max(point["x"] * x_scale, 0.0), w - 1.0)
+                    point["y"] = min(max(point["y"] * y_scale, 0.0), h - 1.0)
                 n_patches = 1
                 before_nms = len(points)
             else:
@@ -482,10 +516,10 @@ def main():
         except RuntimeError as exc:
             if "out of memory" in str(exc).lower():
                 print(
-                    "\n[CUDA OOM] This image could not be inferred at full resolution. "
-                    "No automatic cropping or resizing was applied. "
-                    "Try --amp if not already enabled, or revert to sliding "
-                    "windows without --full_image.",
+                    "\n[CUDA OOM] PET ran out of memory on this image. "
+                    "For whole-image inference try a smaller --max_side "
+                    "(e.g. 2560 or 2048) with --amp. "
+                    "The original file has not been modified.",
                     flush=True,
                 )
             raise
@@ -511,7 +545,13 @@ def main():
                     "image": image_path.name,
                     "width": w,
                     "height": h,
-                    "mode": "full_image" if args.full_image else "sliding_window",
+                    "mode": (
+                        "full_image_resized" if args.full_image and (infer_w != w or infer_h != h)
+                        else "full_image" if args.full_image else "sliding_window"
+                    ),
+                    "inference_width": infer_w if args.full_image else None,
+                    "inference_height": infer_h if args.full_image else None,
+                    "max_side": args.max_side if args.full_image else None,
                     "patch_size": None if args.full_image else args.patch_size,
                     "overlap": None if args.full_image else args.overlap,
                     "stride": None if args.full_image else stride,
@@ -528,7 +568,10 @@ def main():
 
         rows.append({
             "image": image_path.name,
-            "mode": "full_image" if args.full_image else "sliding_window",
+            "mode": (
+                "full_image_resized" if args.full_image and (infer_w != w or infer_h != h)
+                else "full_image" if args.full_image else "sliding_window"
+            ),
             "width": w,
             "height": h,
             "patches": n_patches,
