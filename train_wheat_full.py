@@ -21,8 +21,11 @@ from models import build_model
 
 
 def main(args):
-    if args.batch_size != 1:
-        raise ValueError("Full-image training currently requires --batch_size 1")
+    if args.batch_size < 1:
+        raise ValueError("--batch_size must be >= 1")
+    if args.batch_size == 1:
+        print("WARNING: PET's density-ranked sparse/dense group losses are designed "
+              "for multiple images per batch; prefer batch_size >= 2 if memory permits.")
     if args.accum_steps < 1 or args.epochs < 1:
         raise ValueError("accum_steps and epochs must be positive")
     if args.device != "cuda" or not torch.cuda.is_available():
@@ -50,8 +53,11 @@ def main(args):
     train_data = Wheat1799Full(args.data_path, "train", args.expected_size)
     val_data = Wheat1799Full(args.data_path, "val", args.expected_size)
     train_loader = DataLoader(
-        train_data, batch_size=1, shuffle=True, num_workers=args.num_workers,
-        collate_fn=utils.collate_fn, drop_last=False,
+        train_data, batch_size=args.batch_size, shuffle=True,
+        num_workers=args.num_workers, collate_fn=utils.collate_fn,
+        # PET's density-ranked sparse/dense supervision works best with >=2
+        # images per microbatch, so avoid an undersized final training batch.
+        drop_last=args.batch_size > 1,
     )
     val_loader = DataLoader(
         val_data, batch_size=1, shuffle=False, num_workers=args.num_workers,
@@ -61,7 +67,11 @@ def main(args):
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Results: {output_dir.resolve()}")
     print(f"Train images={len(train_data)} val images={len(val_data)}")
-    print(f"Microbatch=1, gradient accumulation={args.accum_steps}, AMP={args.amp}")
+    print(
+        f"Per-GPU microbatch={args.batch_size} images, "
+        f"accumulation={args.accum_steps}, "
+        f"effective batch={args.batch_size * args.accum_steps}, AMP={args.amp}"
+    )
 
     scaler = torch.amp.GradScaler("cuda", enabled=args.amp)
     best_mae = float("inf")
@@ -84,7 +94,11 @@ def main(args):
     train_count = len(train_loader)
     if args.dry_run:
         train_count = min(train_count, args.accum_steps)
-        print(f"DRY RUN: {train_count} images, one accumulation group, no checkpoints.")
+        print(
+            f"DRY RUN: {train_count} minibatches "
+            f"(up to {train_count * args.batch_size} full images), "
+            "one optimizer step, no checkpoints."
+        )
 
     for epoch in range(start_epoch, args.epochs):
         model.train()
@@ -120,9 +134,10 @@ def main(args):
                 scaler.scale(total_loss / group_size).backward()
             except torch.cuda.OutOfMemoryError:
                 print(
-                    "\nOOM on a 1024x1024 full-image TRAINING step. "
-                    "Do not increase accum_steps (it does not reduce per-image memory). "
-                    "Try --amp first. Otherwise model memory optimization is required.",
+                    f"\nCUDA OOM with batch_size={args.batch_size} at 1024x1024. "
+                    "Try a smaller --batch_size (e.g. 2 instead of 4), "
+                    "retain --amp, or optimize PET memory. "
+                    "Increasing --accum_steps does NOT reduce peak memory.",
                     flush=True,
                 )
                 raise
@@ -191,7 +206,7 @@ if __name__ == "__main__":
     parser.set_defaults(
         dataset_file="Wheat1799Full",
         data_path="./data/wheat1799",
-        batch_size=1,
+        batch_size=2,
         epochs=50,
         eval_freq=5,
         output_dir="wheat1799_full1024",
