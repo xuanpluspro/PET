@@ -25,3 +25,5 @@ testresult/
 **/.ipynb_checkpoints/
 testresult/
 test/
+
+/testresult*/
