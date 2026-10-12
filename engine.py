@@ -84,10 +84,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
-    header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 10
+    header = 'Epoch {:02d}'.format(epoch + 1)
+    print_freq = 50
 
-    for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
+    for samples, targets in metric_logger.log_every(data_loader, print_freq, header, compact=True):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         gt_points = [target['points'] for target in targets]
@@ -122,7 +122,6 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
@@ -137,8 +136,8 @@ def evaluate(model, data_loader, device, epoch=0, vis_dir=None):
     if vis_dir is not None:
         os.makedirs(vis_dir, exist_ok=True)
 
-    print_freq = 10
-    for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
+    print_freq = 50
+    for samples, targets in metric_logger.log_every(data_loader, print_freq, header, compact=True):
         samples = samples.to(device)
         img_h, img_w = samples.tensors.shape[-2:]
 
