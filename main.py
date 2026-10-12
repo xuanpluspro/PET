@@ -180,8 +180,10 @@ def main(args):
             model, criterion, data_loader_train, optimizer, device, epoch,
             args.clip_max_norm)
         t2 = time.time()
-        print('[ep %d][lr %.7f][%.2fs]' % \
-              (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
+        memory_gib = torch.cuda.max_memory_allocated() / 1024**3 if device.type == 'cuda' else 0.0
+        print('Epoch {:02d}/{} | Done | Loss {:.4f} | Time {:.0f}s | LR {:.1e} | GPU {:.1f} GiB'.format(
+            epoch + 1, args.epochs, train_stats['loss'], t2 - t1,
+            optimizer.param_groups[0]['lr'], memory_gib), flush=True)
         
         if utils.is_main_process:
             with open(run_log_name, "a") as log_file:
@@ -222,9 +224,8 @@ def main(args):
             if mae < best_mae:
                 best_epoch = epoch
                 best_mae = mae
-            print("\n==========================")
-            print("\nepoch:", epoch, "mae:", mae, "mse:", mse, "\n\nbest mae:", best_mae, "best epoch:", best_epoch)
-            print("==========================\n")
+            print('Validation | Epoch {:02d} | MAE {:.3f} | RMSE {:.3f} | Best MAE {:.3f} (epoch {:02d})'.format(
+                epoch + 1, mae, mse, best_mae, best_epoch + 1), flush=True)
             if utils.is_main_process():
                 with open(run_log_name, "a") as log_file:
                     log_file.write("\nepoch:{}, mae:{}, mse:{}, time{}, \n\nbest mae:{}, best epoch: {}\n\n".format(
