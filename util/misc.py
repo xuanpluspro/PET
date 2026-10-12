@@ -189,6 +189,26 @@ class MetricLogger(object):
         self.meters[name] = meter
 
     def log_every(self, iterable, print_freq, header=None, compact=False):
+        if compact:
+            from tqdm import tqdm
+
+            # Update one terminal line; detailed meters remain available to callers.
+            with tqdm(
+                total=len(iterable), desc=header or 'Progress',
+                dynamic_ncols=True, mininterval=1.0,
+                disable=None if is_main_process() else True,
+                unit='batch', leave=True,
+            ) as progress:
+                for obj in iterable:
+                    yield obj
+                    if 'loss' in self.meters:
+                        progress.set_postfix_str(
+                            'loss={:.4f}'.format(self.meters['loss'].global_avg),
+                            refresh=False,
+                        )
+                    progress.update(1)
+            return
+
         i = 0
         if not header:
             header = ''
