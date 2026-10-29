@@ -120,8 +120,8 @@ def main(args):
     vis_dir = None if args.vis_dir == "" else args.vis_dir
     test_stats = evaluate(model, data_loader_val, device, epoch=cur_epoch, vis_dir=vis_dir,
                           loc_radii=args.loc_radii, metrics_dir=args.metrics_dir)
-    mae, mse = test_stats['mae'], test_stats['mse']
-    line = f'\nepoch: {cur_epoch}, mae: {mae}, mse: {mse}' 
+    mae, rmse = test_stats['mae'], test_stats['rmse']
+    line = f'\nepoch: {cur_epoch}, mae: {mae}, rmse: {rmse}' 
     print(line)
 
 

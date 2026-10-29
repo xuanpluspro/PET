@@ -171,7 +171,7 @@ def main(args):
         is_best = False
         if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
             stats = evaluate(model, val_loader, device, epoch, None)
-            mae, rmse = stats["mae"], stats["mse"]
+            mae, rmse = stats["mae"], stats["rmse"]
             is_best = mae < best_mae
             if is_best:
                 best_mae, best_epoch = mae, epoch

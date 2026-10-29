@@ -164,8 +164,6 @@ def evaluate(model, data_loader, device, epoch=0, vis_dir=None,
             visualization(samples, targets, [points], vis_dir, split_map=split_map)
     meter.synchronize(expected_samples=len(data_loader.dataset))
     results = meter.summary()
-    # Backward-compatible alias; its numerical meaning is RMSE.
-    results['mse'] = results['rmse']
     results['evaluation_seconds'] = time.perf_counter() - start
     rank0 = not (dist.is_available() and dist.is_initialized()) or dist.get_rank() == 0
     if rank0:

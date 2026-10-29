@@ -230,16 +230,16 @@ def main(args):
             t2 = time.time()
 
             # output results
-            mae, mse = test_stats['mae'], test_stats['mse']
+            mae, rmse = test_stats['mae'], test_stats['rmse']
             if mae < best_mae:
                 best_epoch = epoch
                 best_mae = mae
             print('Validation | Epoch {:02d} | MAE {:.3f} | RMSE {:.3f} | Best MAE {:.3f} (epoch {:02d})'.format(
-                epoch + 1, mae, mse, best_mae, best_epoch + 1), flush=True)
+                epoch + 1, mae, rmse, best_mae, best_epoch + 1), flush=True)
             if utils.is_main_process():
                 with open(run_log_name, "a") as log_file:
-                    log_file.write("\nepoch:{}, mae:{}, mse:{}, time{}, \n\nbest mae:{}, best epoch: {}\n\n".format(
-                                                epoch, mae, mse, t2 - t1, best_mae, best_epoch))
+                    log_file.write("\nepoch:{}, mae:{}, rmse:{}, time{}, \n\nbest mae:{}, best epoch: {}\n\n".format(
+                                                epoch, mae, rmse, t2 - t1, best_mae, best_epoch))
                                                 
             # Save after updating best_mae so checkpoint metadata matches its weights.
             paths = [output_dir / 'checkpoint.pth']

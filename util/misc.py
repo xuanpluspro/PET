@@ -244,7 +244,7 @@ class MetricLogger(object):
             if (i + 1) % print_freq == 0 or i == len(iterable) - 1 or i == 0:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i - 1)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                meters = str(self).split('  ')[0] if 'mse' in str(self) else str(self)
+                meters = str(self).split('  ')[0] if 'rmse' in str(self) else str(self)
                 if compact:
                     fields = [header, 'Batch {}/{}'.format(i + 1, len(iterable))]
                     if 'loss' in self.meters:
