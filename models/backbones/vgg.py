@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 
@@ -21,7 +23,7 @@ model_urls = {
 
 
 model_paths = {
-    'vgg16_bn': './pretrained/vgg16_bn-6c64b313.pth',
+    'vgg16_bn': str(Path(__file__).resolve().parents[2] / 'pretrained' / 'vgg16_bn-6c64b313.pth'),
 }
 
 
@@ -96,7 +98,9 @@ def _vgg(arch, cfg, batch_norm, pretrained, progress, sync=False, **kwargs):
         kwargs['init_weights'] = False
     model = VGG(make_layers(cfgs[cfg], batch_norm=batch_norm, sync=sync), **kwargs)
     if pretrained:
-        state_dict = torch.load(model_paths[arch])
+        if not Path(model_paths[arch]).is_file():
+            raise FileNotFoundError(f'Missing VGG backbone weights: {model_paths[arch]}')
+        state_dict = torch.load(model_paths[arch], map_location='cpu')
         model.load_state_dict(state_dict)
     return model
 

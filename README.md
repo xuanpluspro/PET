@@ -157,3 +157,9 @@ PET 训练参数可加 `--loc-radii 4 8 16`；默认已启用。
 ```bash
 python eval.py --dataset_file Wheat1799 --data_path /path/to/RiceW3999 --resume /path/to/best_checkpoint.pth --metrics-dir evaluation/leaf
 ```
+
+## 本地预训练目录
+克隆仓库后已提供 `pretrained/`，将 `vgg16_bn-6c64b313.pth` 放入即可。
+该文件与 P2RLoss 所需的 torchvision ImageNet VGG16-BN 权重相同；
+仅骨干初始化权重可以共用，训练后的完整计数模型不能互换。
+VGG 加载路径基于仓库位置解析，不再依赖启动命令时的当前目录。

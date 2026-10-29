@@ -2,7 +2,8 @@
 data/
 
 # Pretrained backbone weights
-pretrained/
+/pretrained/*
+!/pretrained/README.md
 
 # Training outputs and checkpoints
 outputs/
