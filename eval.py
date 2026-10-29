@@ -60,6 +60,8 @@ def get_args_parser():
     parser.add_argument('--vis_dir', default="")
     parser.add_argument('--num_workers', default=2, type=int)
 
+    parser.add_argument('--loc-radii', type=float, nargs='+', default=[4, 8, 16])
+    parser.add_argument('--metrics-dir', default='evaluation')
     # distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
@@ -101,19 +103,23 @@ def main(args):
     data_loader_val = DataLoader(dataset_val, 1, sampler=sampler_val,
                                  drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
 
+    cur_epoch = 0
+    if not args.resume:
+        raise ValueError('--resume must point to a trained checkpoint')
     # load pretrained model
     if args.resume:
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
         model_without_ddp.load_state_dict(checkpoint['model'])        
         cur_epoch = checkpoint['epoch'] if 'epoch' in checkpoint else 0
     
     # evaluation
     vis_dir = None if args.vis_dir == "" else args.vis_dir
-    test_stats = evaluate(model, data_loader_val, device, vis_dir=vis_dir)
+    test_stats = evaluate(model, data_loader_val, device, epoch=cur_epoch, vis_dir=vis_dir,
+                          loc_radii=args.loc_radii, metrics_dir=args.metrics_dir)
     mae, mse = test_stats['mae'], test_stats['mse']
     line = f'\nepoch: {cur_epoch}, mae: {mae}, mse: {mse}' 
     print(line)

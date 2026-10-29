@@ -145,3 +145,15 @@ This code is for academic purposes only. Contact: Chengxin Liu (cx_liu@hust.edu.
 We thank the authors of [DETR](https://github.com/facebookresearch/detr) and [P2PNet](https://github.com/TencentYoutuResearch/CrowdCounting-P2PNet) for open-sourcing their work.
 
 
+
+## 统一计数、定位与效率指标
+
+新增 MAE、RMSE、Precision/Recall/F1@4/8/16px、逐图 CSV 与指标 JSON；
+训练自动导出，参数量、延迟/FPS、峰值显存和可选 GFLOPs 由独立脚本统计。
+详见 [评价说明](METRICS.md)。
+
+PET 训练参数可加 `--loc-radii 4 8 16`；默认已启用。
+独立验证示例（按实际架构保留其他参数）：
+```bash
+python eval.py --dataset_file Wheat1799 --data_path /path/to/RiceW3999 --resume /path/to/best_checkpoint.pth --metrics-dir evaluation/leaf
+```

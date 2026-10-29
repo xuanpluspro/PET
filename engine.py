@@ -127,51 +127,53 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 # evaluation
 @torch.no_grad()
-def evaluate(model, data_loader, device, epoch=0, vis_dir=None):
+def evaluate(model, data_loader, device, epoch=0, vis_dir=None,
+             loc_radii=(4, 8, 16), metrics_dir=None):
+    from counting_metrics import PointMetrics
+    import torch.distributed as dist
+    import time
     model.eval()
-
+    meter = PointMetrics(loc_radii)
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Test:'
-
     if vis_dir is not None:
         os.makedirs(vis_dir, exist_ok=True)
-
-    print_freq = 50
-    for samples, targets in metric_logger.log_every(data_loader, print_freq, header, compact=True):
+    start = time.perf_counter()
+    for samples, targets in metric_logger.log_every(data_loader, 50, 'Test:', compact=True):
+        if len(targets) != 1:
+            raise ValueError('PET evaluation requires batch size 1')
         samples = samples.to(device)
         img_h, img_w = samples.tensors.shape[-2:]
-
-        # inference
         outputs = model(samples, test=True, targets=targets)
-        outputs_scores = torch.nn.functional.softmax(outputs['pred_logits'], -1)[:, :, 1][0]
-        outputs_points = outputs['pred_points'][0]
-        outputs_offsets = outputs['pred_offsets'][0]
-        
-        # process predicted points
-        predict_cnt = len(outputs_scores)
-        gt_cnt = targets[0]['points'].shape[0]
-
-        # compute error
-        mae = abs(predict_cnt - gt_cnt)
-        mse = (predict_cnt - gt_cnt) * (predict_cnt - gt_cnt)
-
-        # record results
-        results = {}
-        toTensor = lambda x: torch.tensor(x).float().cuda()
-        results['mae'], results['mse'] = toTensor(mae), toTensor(mse)
-        metric_logger.update(mae=results['mae'], mse=results['mse'])
-
-        results_reduced = utils.reduce_dict(results)
-        metric_logger.update(mae=results_reduced['mae'], mse=results_reduced['mse'])
-
-        # visualize predictions
-        if vis_dir: 
-            points = [[point[0]*img_h, point[1]*img_w] for point in outputs_points]     # recover to actual points
+        points = outputs['pred_points'][0].detach().cpu().numpy().copy()
+        points *= np.array([img_h, img_w])
+        valid = (~samples.mask[0]).nonzero()
+        valid_h = int(valid[:, 0].max().item()) + 1
+        valid_w = int(valid[:, 1].max().item()) + 1
+        keep = ((points[:, 0] >= 0) & (points[:, 0] < valid_h) &
+                (points[:, 1] >= 0) & (points[:, 1] < valid_w))
+        points = points[keep]
+        gt = targets[0]['points'].detach().cpu().numpy()
+        image_id = targets[0].get('image_path')
+        if image_id is None:
+            raise ValueError('Evaluation target must include a unique image_path')
+        meter.update(image_id, points, gt)
+        error = abs(len(points) - len(gt))
+        metric_logger.update(mae=error)
+        if vis_dir:
             split_map = (outputs['split_map_raw'][0].detach().cpu().squeeze(0) > 0.5).float().numpy()
             visualization(samples, targets, [points], vis_dir, split_map=split_map)
-    
-    # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
-    results = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-    results['mse'] = np.sqrt(results['mse'])
+    meter.synchronize(expected_samples=len(data_loader.dataset))
+    results = meter.summary()
+    # Backward-compatible alias; its numerical meaning is RMSE.
+    results['mse'] = results['rmse']
+    results['evaluation_seconds'] = time.perf_counter() - start
+    rank0 = not (dist.is_available() and dist.is_initialized()) or dist.get_rank() == 0
+    if rank0:
+        print('Validation | ' + ' | '.join(
+            f'{key} {value:.4f}' for key, value in results.items()
+            if key in ('mae', 'rmse') or key.startswith(('precision_', 'recall_', 'f1_'))))
+        if metrics_dir:
+            meter.export(metrics_dir, results, {'epoch_index': epoch, 'split': 'val',
+                'prediction_threshold': 0.5, 'threshold_rule': 'foreground probability > 0.5',
+                'padding_predictions': 'removed', 'params': sum(p.numel() for p in model.parameters())})
     return results

@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 import os
 import shutil
+from counting_metrics import append_history
 
 import numpy as np
 import torch
@@ -78,6 +79,8 @@ def get_args_parser():
     parser.add_argument('--eval_freq', default=5, type=int)
     parser.add_argument('--syn_bn', default=0, type=int)
 
+    parser.add_argument('--loc-radii', type=float, nargs='+', default=[4, 8, 16])
+
     # distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
@@ -139,11 +142,10 @@ def main(args):
     data_loader_val = DataLoader(dataset_val, 1, sampler=sampler_val,
                                 drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
 
-    # output directory and log 
-    if utils.is_main_process:
-        output_dir = os.path.join("./outputs", args.dataset_file, args.output_dir)
-        os.makedirs(output_dir, exist_ok=True)
-        output_dir = Path(output_dir)
+    # All ranks need the same output path; only rank zero writes logs.
+    output_dir = Path("./outputs") / args.dataset_file / args.output_dir
+    if utils.is_main_process():
+        output_dir.mkdir(parents=True, exist_ok=True)
         run_log_name = os.path.join(output_dir, 'run_log.txt')
         with open(run_log_name, "a") as log_file:
             log_file.write('Run Log %s\n' % time.strftime("%c"))
@@ -175,17 +177,20 @@ def main(args):
         if args.distributed:
             sampler_train.set_epoch(epoch)
         
+        if device.type == 'cuda':
+            torch.cuda.reset_peak_memory_stats(device)
         t1 = time.time()
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch,
             args.clip_max_norm)
         t2 = time.time()
+        train_seconds = t2 - t1
         memory_gib = torch.cuda.max_memory_allocated() / 1024**3 if device.type == 'cuda' else 0.0
         print('Epoch {:02d}/{} | Done | Loss {:.4f} | Time {:.0f}s | LR {:.1e} | GPU {:.1f} GiB'.format(
             epoch + 1, args.epochs, train_stats['loss'], t2 - t1,
             optimizer.param_groups[0]['lr'], memory_gib), flush=True)
         
-        if utils.is_main_process:
+        if utils.is_main_process():
             with open(run_log_name, "a") as log_file:
                 log_file.write('\n[ep %d][lr %.7f][%.2fs]' % (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
 
@@ -214,9 +219,14 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
 
         # evaluation
-        if epoch % args.eval_freq == 0 and epoch > 0:
+        if (epoch % args.eval_freq == 0 and epoch > 0) or epoch == args.epochs - 1:
             t1 = time.time()
-            test_stats = evaluate(model, data_loader_val, device, epoch, None)
+            test_stats = evaluate(model, data_loader_val, device, epoch, None,
+                loc_radii=args.loc_radii, metrics_dir=output_dir / 'evaluation' / f'epoch_{epoch + 1:04d}')
+            if utils.is_main_process():
+                append_history(output_dir / 'metrics_history.csv',
+                    dict(epoch=epoch + 1, train_seconds=train_seconds,
+                         train_peak_allocated_mib=memory_gib * 1024, **test_stats))
             t2 = time.time()
 
             # output results
@@ -231,11 +241,19 @@ def main(args):
                     log_file.write("\nepoch:{}, mae:{}, mse:{}, time{}, \n\nbest mae:{}, best epoch: {}\n\n".format(
                                                 epoch, mae, mse, t2 - t1, best_mae, best_epoch))
                                                 
-            # save best checkpoint
+            # Save after updating best_mae so checkpoint metadata matches its weights.
+            paths = [output_dir / 'checkpoint.pth']
+            if mae == best_mae:
+                paths.append(output_dir / 'best_checkpoint.pth')
+            for path in paths:
+                utils.save_on_master({
+                    'model': model_without_ddp.state_dict(), 'optimizer': optimizer.state_dict(),
+                    'lr_scheduler': lr_scheduler.state_dict(), 'epoch': epoch, 'args': args,
+                    'best_mae': best_mae, 'best_epoch': best_epoch,
+                }, path)
             if mae == best_mae and utils.is_main_process():
-                src_path = output_dir / 'checkpoint.pth'
-                dst_path = output_dir / 'best_checkpoint.pth'
-                shutil.copyfile(src_path, dst_path)
+                shutil.copyfile(output_dir / 'evaluation' / f'epoch_{epoch + 1:04d}' / 'metrics.json',
+                                output_dir / 'best_metrics.json')
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
