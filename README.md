@@ -163,3 +163,7 @@ python eval.py --dataset_file Wheat1799 --data_path /path/to/RiceW3999 --resume 
 该文件与 P2RLoss 所需的 torchvision ImageNet VGG16-BN 权重相同；
 仅骨干初始化权重可以共用，训练后的完整计数模型不能互换。
 VGG 加载路径基于仓库位置解析，不再依赖启动命令时的当前目录。
+
+
+## 断点续训
+两个训练入口均支持每轮自动保存完整状态，并用 `--auto-resume` 自动恢复；显式恢复可用 `--resume <checkpoint.pth或实验目录>`。详见 [断点续训说明](RESUME.md)。

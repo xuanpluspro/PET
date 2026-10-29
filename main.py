@@ -7,6 +7,8 @@ from pathlib import Path
 import os
 import shutil
 from counting_metrics import append_history
+from checkpointing import (save_training_checkpoint, load_training_checkpoint,
+                           select_resume_path, trim_metric_history)
 
 import numpy as np
 import torch
@@ -72,7 +74,9 @@ def get_args_parser():
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--resume', default='', help='resume from checkpoint')
+    parser.add_argument('--resume', default='', help='trusted checkpoint file or experiment directory')
+    parser.add_argument('--auto-resume', '--auto_resume', dest='auto_resume',
+                        action='store_true', help='resume checkpoint.pth in this output directory')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument('--num_workers', default=4, type=int)
@@ -152,28 +156,25 @@ def main(args):
             log_file.write("{}".format(args))
             log_file.write("parameters: {}".format(n_parameters))
 
-    # resume
-    best_mae, best_epoch = 1e8, 0
-    if args.resume:
-        if args.resume.startswith('https'):
-            checkpoint = torch.hub.load_state_dict_from_url(
-                args.resume, map_location='cpu', check_hash=True)
-        else:
-            checkpoint = torch.load(args.resume, map_location='cpu',weights_only=False)
-            
-        model_without_ddp.load_state_dict(checkpoint['model'])
-        
-        if 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-            args.start_epoch = checkpoint['epoch'] + 1
-            best_mae = checkpoint.get('best_mae',1e8)
-            best_epoch = checkpoint.get('best_epoch',0)
+    # Resume only a completed epoch; never save partially updated OOM state.
+    best_mae, best_epoch = float('inf'), -1
+    resume_path = select_resume_path(args.resume, args.auto_resume, output_dir)
+    if resume_path:
+        args.start_epoch, best_mae, best_epoch = load_training_checkpoint(
+            resume_path, model_without_ddp, optimizer, lr_scheduler, args)
+        if utils.is_main_process():
+            trim_metric_history(output_dir / 'metrics_history.csv', args.start_epoch)
+        print(f'Resumed {resume_path}: completed {args.start_epoch} epochs; '
+              f'next epoch {args.start_epoch + 1}/{args.epochs}', flush=True)
+    if args.start_epoch >= args.epochs:
+        print('Requested total epochs already completed; no training needed.')
+        return
 
     # training
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
+        is_best = False
         if args.distributed:
             sampler_train.set_epoch(epoch)
         
@@ -195,19 +196,6 @@ def main(args):
                 log_file.write('\n[ep %d][lr %.7f][%.2fs]' % (epoch, optimizer.param_groups[0]['lr'], t2 - t1))
 
         lr_scheduler.step()
-
-        # save checkpoint
-        checkpoint_paths = [output_dir / 'checkpoint.pth']
-        for checkpoint_path in checkpoint_paths:
-            utils.save_on_master({
-                'model': model_without_ddp.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'lr_scheduler': lr_scheduler.state_dict(),
-                'epoch': epoch,
-                'args': args,
-                'best_mae': best_mae,
-                'best_epoch': best_epoch,
-            }, checkpoint_path)
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch,
@@ -231,7 +219,8 @@ def main(args):
 
             # output results
             mae, rmse = test_stats['mae'], test_stats['rmse']
-            if mae < best_mae:
+            is_best = mae < best_mae
+            if is_best:
                 best_epoch = epoch
                 best_mae = mae
             print('Validation | Epoch {:02d} | MAE {:.3f} | RMSE {:.3f} | Best MAE {:.3f} (epoch {:02d})'.format(
@@ -241,19 +230,18 @@ def main(args):
                     log_file.write("\nepoch:{}, mae:{}, rmse:{}, time{}, \n\nbest mae:{}, best epoch: {}\n\n".format(
                                                 epoch, mae, rmse, t2 - t1, best_mae, best_epoch))
                                                 
-            # Save after updating best_mae so checkpoint metadata matches its weights.
-            paths = [output_dir / 'checkpoint.pth']
-            if mae == best_mae:
-                paths.append(output_dir / 'best_checkpoint.pth')
-            for path in paths:
-                utils.save_on_master({
-                    'model': model_without_ddp.state_dict(), 'optimizer': optimizer.state_dict(),
-                    'lr_scheduler': lr_scheduler.state_dict(), 'epoch': epoch, 'args': args,
-                    'best_mae': best_mae, 'best_epoch': best_epoch,
-                }, path)
-            if mae == best_mae and utils.is_main_process():
+            if is_best and utils.is_main_process():
                 shutil.copyfile(output_dir / 'evaluation' / f'epoch_{epoch + 1:04d}' / 'metrics.json',
                                 output_dir / 'best_metrics.json')
+
+        # Save after scheduled validation. If validation/this epoch fails, the
+        # previous completed epoch remains the recovery point.
+        save_training_checkpoint(
+            output_dir / 'checkpoint.pth', model_without_ddp, optimizer, lr_scheduler,
+            epoch, args, best_mae, best_epoch,
+            best_path=output_dir / 'best_checkpoint.pth' if is_best else None)
+        if utils.is_main_process():
+            print(f'Checkpoint saved | completed epoch {epoch + 1}/{args.epochs}', flush=True)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

@@ -18,6 +18,9 @@ from datasets.Wheat1799Full import Wheat1799Full
 from engine import evaluate
 from main import get_args_parser
 from models import build_model
+from counting_metrics import append_history
+from checkpointing import (save_training_checkpoint, load_training_checkpoint,
+                           select_resume_path, trim_metric_history)
 
 
 def main(args):
@@ -78,20 +81,21 @@ def main(args):
     best_epoch = -1
     start_epoch = 0
 
-    if args.resume:
-        ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
-        model.load_state_dict(ckpt["model"])
-        optimizer.load_state_dict(ckpt["optimizer"])
-        scheduler.load_state_dict(ckpt["lr_scheduler"])
-        if "scaler" in ckpt:
-            scaler.load_state_dict(ckpt["scaler"])
-        start_epoch = ckpt["epoch"] + 1
-        best_mae = ckpt.get("best_mae", best_mae)
-        best_epoch = ckpt.get("best_epoch", best_epoch)
-        print(f"RESUMED at epoch {start_epoch} from {args.resume}")
+    resume_path = select_resume_path(args.resume, args.auto_resume, output_dir)
+    if resume_path:
+        start_epoch, best_mae, best_epoch = load_training_checkpoint(
+            resume_path, model, optimizer, scheduler, args, scaler=scaler)
+        trim_metric_history(output_dir / 'metrics_history.csv', start_epoch)
+        print(f'RESUMED: completed {start_epoch} epochs; next epoch {start_epoch + 1}/{args.epochs} '
+              f'from {resume_path}', flush=True)
+    if start_epoch >= args.epochs:
+        print('Requested total epochs already completed; no training needed.')
+        return
 
     start_time = time.time()
     train_count = len(train_loader)
+    if train_count == 0:
+        raise ValueError('Training loader is empty; reduce batch_size or check the data split')
     if args.dry_run:
         train_count = min(train_count, args.accum_steps)
         print(
@@ -170,26 +174,23 @@ def main(args):
         # Validate BEFORE checkpoint save so 'best' metadata is in sync.
         is_best = False
         if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
-            stats = evaluate(model, val_loader, device, epoch, None)
+            stats = evaluate(model, val_loader, device, epoch, None,
+                             loc_radii=args.loc_radii,
+                             metrics_dir=output_dir / 'evaluation' / f'epoch_{epoch + 1:04d}')
+            append_history(output_dir / 'metrics_history.csv', dict(epoch=epoch + 1, **stats))
             mae, rmse = stats["mae"], stats["rmse"]
             is_best = mae < best_mae
             if is_best:
                 best_mae, best_epoch = mae, epoch
             print(f"[validation] epoch={epoch} MAE={mae:.4f} RMSE={rmse:.4f} "
                   f"best_MAE={best_mae:.4f} best_epoch={best_epoch}", flush=True)
-        state = {
-            "model": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "lr_scheduler": scheduler.state_dict(),
-            "scaler": scaler.state_dict(),
-            "epoch": epoch,
-            "args": args,
-            "best_mae": best_mae,
-            "best_epoch": best_epoch,
-        }
-        torch.save(state, output_dir / "checkpoint.pth")
+        save_training_checkpoint(
+            output_dir / 'checkpoint.pth', model, optimizer, scheduler,
+            epoch, args, best_mae, best_epoch, scaler=scaler,
+            best_path=output_dir / 'best_checkpoint.pth' if is_best else None)
         if is_best:
-            shutil.copy2(output_dir / "checkpoint.pth", output_dir / "best_checkpoint.pth")
+            shutil.copyfile(output_dir / 'evaluation' / f'epoch_{epoch + 1:04d}' / 'metrics.json',
+                            output_dir / 'best_metrics.json')
         with (output_dir / "run_log.txt").open("a", encoding="utf-8") as f:
             f.write(json.dumps({
                 "epoch": epoch, "train_loss": epoch_sum/train_count,
