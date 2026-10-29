@@ -207,7 +207,7 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
 
         # evaluation
-        if (epoch % args.eval_freq == 0 and epoch > 0) or epoch == args.epochs - 1:
+        if (epoch + 1) % args.eval_freq == 0 or epoch == args.epochs - 1:
             t1 = time.time()
             test_stats = evaluate(model, data_loader_val, device, epoch, None,
                 loc_radii=args.loc_radii, metrics_dir=output_dir / 'evaluation' / f'epoch_{epoch + 1:04d}')
