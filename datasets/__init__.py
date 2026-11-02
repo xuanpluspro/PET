@@ -21,12 +21,8 @@ def build_dataset(image_set, args):
             f"dataset {args.dataset_file} not supported"
         )
 
-    # RiceW3999 reuses the VOC-style point loader with 512px training crops.
-    # Honor an explicit data path; recognize the legacy parser default.
-    if args.dataset_file == "RiceW3999":
-        if not getattr(args, "data_path", None) or args.data_path == "./data/ShanghaiTech/PartA":
-            args.data_path = data_path[args.dataset_file]
-    else:
+    # Explicit CLI paths take priority for every supported dataset.
+    if not getattr(args, "data_path", None):
         args.data_path = data_path[args.dataset_file]
 
     if args.dataset_file == "SHA":

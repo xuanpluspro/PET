@@ -50,7 +50,7 @@ def get_args_parser():
 
     # dataset parameters
     parser.add_argument('--dataset_file', default="SHA")
-    parser.add_argument('--data_path', default="./data/ShanghaiTech/PartA", type=str)
+    parser.add_argument('--data_path', default=None, type=str)
 
     # misc parameters
     parser.add_argument('--device', default='cuda',
