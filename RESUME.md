@@ -49,3 +49,8 @@ python -m unittest discover -s tests -p test_checkpointing.py -v
 ```
 
 测试覆盖连续训练/恢复训练一致性、随机状态、优化器与调度器、AMP 状态接口、旧版兼容、参数检查、原子写入失败保护及指标去重。多进程测试在禁止 Unix socket 的环境中自动跳过；CUDA/DDP 需要在实际 GPU 环境验证。
+
+
+## 验证频率
+
+`main.py`、`train_wheat_full.py` 和 `train.sh` 默认每个完整 epoch 验证。`--eval_freq N` 可覆盖，最后一轮始终验证一次。恢复时允许切换验证频率，不补评估历史轮次；切换频率可能改变随机数消耗和后续训练轨迹。

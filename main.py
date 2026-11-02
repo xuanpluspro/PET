@@ -80,7 +80,7 @@ def get_args_parser():
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument('--num_workers', default=4, type=int)
-    parser.add_argument('--eval_freq', default=5, type=int)
+    parser.add_argument('--eval_freq', default=1, type=int)
     parser.add_argument('--syn_bn', default=0, type=int)
 
     parser.add_argument('--loc-radii', type=float, nargs='+', default=[4, 8, 16])

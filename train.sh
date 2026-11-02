@@ -15,5 +15,5 @@ python -m torch.distributed.launch \
     --dropout=0.0 \
     --epochs=1500 \
     --dataset_file="SHA" \
-    --eval_freq=5 \
+    --eval_freq=1 \
     --output_dir='pet_model'

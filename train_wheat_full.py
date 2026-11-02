@@ -209,7 +209,7 @@ if __name__ == "__main__":
         data_path="./data/wheat1799",
         batch_size=2,
         epochs=50,
-        eval_freq=5,
+        eval_freq=1,
         output_dir="wheat1799_full1024",
     )
     parser.add_argument("--amp", action="store_true")
