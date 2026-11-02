@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 import os
 import shutil
+from experiment_logging import experiment_console
 from counting_metrics import append_history
 from checkpointing import (save_training_checkpoint, load_training_checkpoint,
                            select_resume_path, trim_metric_history)
@@ -251,4 +252,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('PET training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
-    main(args)
+    experiment_dir = Path("./outputs") / args.dataset_file / args.output_dir
+    with experiment_console(experiment_dir):
+        main(args)

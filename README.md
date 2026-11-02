@@ -190,3 +190,28 @@ JSON 仍包含图片数、点数、空标注数和尺寸统计，进度写入 st
 
 PET/P2RLoss 的检查保留重复点的计数，不会擅自删除或修改标注；这不代表重复标注必然正确。
 
+
+## RiceW3999：统一实验输出
+
+直接运行 main.py 即可同时显示终端输出并追加保存 console.log，无需额外的 logs/ 或 shell tee。
+数据路径优先使用 --data_path，支持复用其他仓库的数据集。
+
+```bash
+python -u main.py \
+  --dataset_file Wheat1799 \
+  --data_path /root/gpufree-data/apgcc-leaf-counting/data/RiceW3999 \
+  --backbone vgg16_bn --batch_size 32 --epochs 50 \
+  --num_workers 4 --eval_freq 1 --seed 2024 \
+  --output_dir ricew3999_pet_ep50_bs32_run1 --auto-resume
+```
+
+本例所有训练产物均位于 outputs/Wheat1799/ricew3999_pet_ep50_bs32_run1/：
+- console.log：终端输出、警告及训练异常堆栈，续训追加。
+- run_log.txt：结构化训练日志。
+- checkpoint.pth / best_checkpoint.pth：最新完整状态与最佳模型。
+- metrics_history.csv / best_metrics.json：历轮与最佳指标。
+- evaluation/epoch_XXXX/：每次验证的指标和逐图结果。
+
+已有实验目录保持兼容；旧 logs/ 文件不会自动移动或删除。
+分布式运行中主进程写 console.log，其他进程写 console.rankN.log，均在同一实验目录。
+此自动终端日志适用于 main.py 训练入口；独立评估仍通过 --metrics-dir 指定评估结果路径。
