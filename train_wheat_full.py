@@ -199,6 +199,9 @@ def main(args):
             }) + "\n")
     print(f"Training time {datetime.timedelta(seconds=int(time.time()-start_time))}")
 
+    from point_efficiency import export_efficiency
+    export_efficiency(model, output_dir, pet=True)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
