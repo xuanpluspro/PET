@@ -248,6 +248,10 @@ def main(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
 
+    if utils.is_main_process():
+        from point_efficiency import export_efficiency
+        export_efficiency(model_without_ddp, output_dir, pet=True)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('PET training and evaluation script', parents=[get_args_parser()])
