@@ -1,6 +1,7 @@
 import os
 import shutil
 import numpy as np
+from unicode_image_io import imread, imwrite
 from PIL import Image
 import cv2
 import scipy.io as io
@@ -13,7 +14,7 @@ def process_ucf_qnrf(data_root, down_size=1536):
     def load_data(img_gt_path, down_size):
         # load image and annotation
         img_path, gt_path = img_gt_path
-        img = cv2.imread(img_path)
+        img = imread(img_path)
         img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         anno = io.loadmat(gt_path)
         points = anno["annPoints"]
@@ -67,7 +68,7 @@ def process_jhu_crowd(data_root, down_size=2048):
     def load_data(img_gt_path, down_size):
         # load image and annotation
         img_path, gt_path = img_gt_path
-        img = cv2.imread(img_path)
+        img = imread(img_path)
         img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
         file = open(gt_path, 'r')
         lines = file.readlines()
@@ -137,7 +138,7 @@ def process_nwpu_crowd(data_root, down_size=2048):
     def load_data(img_gt_path, down_size):
         # load image and annotation
         img_path, gt_path = img_gt_path
-        img = cv2.imread(img_path)
+        img = imread(img_path)
         img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))    
         anno = json.load(open(gt_path, 'r'))
         points = np.array(anno['points'])  # format: (x, y)
@@ -156,7 +157,7 @@ def process_nwpu_crowd(data_root, down_size=2048):
     
     def load_data_test(img_gt_path, down_size):
         img_path = img_gt_path
-        img = cv2.imread(img_path)
+        img = imread(img_path)
         img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))    
 
         img_w, img_h = img.size

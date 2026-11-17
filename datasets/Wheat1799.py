@@ -4,6 +4,7 @@ import warnings
 
 import cv2
 import numpy as np
+from unicode_image_io import imread, imwrite
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
@@ -37,7 +38,7 @@ class Wheat1799(Dataset):
             )
 
         # train.txt / val.txt 中保存的是不带扩展名的图片 ID
-        with open(split_file, "r", encoding="utf-8") as f:
+        with open(split_file, "r", encoding="utf-8-sig") as f:
             ids = [
                 line.strip()
                 for line in f
@@ -202,7 +203,7 @@ class Wheat1799(Dataset):
 
 def load_data(img_path, gt_path):
 
-    img = cv2.imread(img_path)
+    img = imread(img_path)
 
     if img is None:
         raise FileNotFoundError(

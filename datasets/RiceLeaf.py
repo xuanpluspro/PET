@@ -5,6 +5,7 @@ import warnings
 
 import cv2
 import numpy as np
+from unicode_image_io import imread, imwrite
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
@@ -231,7 +232,7 @@ def load_data(img_gt_path, train):
     # --------------------------------------------------
     # Read image
     # --------------------------------------------------
-    img = cv2.imread(img_path)
+    img = imread(img_path)
 
     if img is None:
         raise FileNotFoundError(

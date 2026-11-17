@@ -10,6 +10,7 @@ import random
 
 import cv2
 import numpy as np
+from unicode_image_io import imread, imwrite
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
@@ -75,7 +76,7 @@ class Wheat1799Full(Dataset):
 
     def __getitem__(self, index):
         image_path, annotation_path = self.samples[index]
-        bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        bgr = imread(str(image_path), cv2.IMREAD_COLOR)
         if bgr is None:
             raise OSError(f"Cannot read image: {image_path}")
         height, width = bgr.shape[:2]

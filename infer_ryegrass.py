@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from unicode_image_io import imread, imwrite
 import torch
 from PIL import Image
 import torchvision.transforms as T
@@ -380,7 +381,7 @@ def save_visualization(image, points, save_path, radius):
         cv2.LINE_AA,
     )
 
-    cv2.imwrite(
+    imwrite(
         str(save_path),
         vis,
         [cv2.IMWRITE_JPEG_QUALITY, 95],
@@ -438,7 +439,7 @@ def main():
     rows = []
 
     for image_idx, image_path in enumerate(image_paths, 1):
-        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        image = imread(str(image_path), cv2.IMREAD_COLOR)
 
         if image is None:
             print(f"[skip] Cannot read: {image_path}")

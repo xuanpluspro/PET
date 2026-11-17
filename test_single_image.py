@@ -2,6 +2,7 @@ import argparse
 import os
 import cv2
 import numpy as np
+from unicode_image_io import imread, imwrite
 from PIL import Image
 import torch
 import torchvision.transforms as standard_transforms
@@ -114,7 +115,7 @@ def visualization(samples, pred, vis_dir, img_path, split_map=None):
 
             name = img_path.split('/')[-1].split('.')[0]
             img_save_path = os.path.join(vis_dir, '{}_pred{}.jpg'.format(name, len(pred[idx])))
-            cv2.imwrite(img_save_path, sample_vis)
+            imwrite(img_save_path, sample_vis)
             print('image save to ', img_save_path)
 
 
@@ -126,7 +127,7 @@ def evaluate_single_image(model, img_path, device, vis_dir=None):
         os.makedirs(vis_dir, exist_ok=True)
 
     # load image
-    img = cv2.imread(img_path)
+    img = imread(img_path)
     img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
     # transform image

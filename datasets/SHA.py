@@ -2,6 +2,7 @@ import os
 import random
 import torch
 import numpy as np
+from unicode_image_io import imread, imwrite
 from torch.utils.data import Dataset
 from PIL import Image
 import cv2
@@ -100,7 +101,7 @@ class SHA(Dataset):
 
 def load_data(img_gt_path, train):
     img_path, gt_path = img_gt_path
-    img = cv2.imread(img_path)
+    img = imread(img_path)
     img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     points = io.loadmat(gt_path)['image_info'][0][0][0][0][0][:,::-1]
     return img, points
